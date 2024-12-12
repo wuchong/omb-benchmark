@@ -21,10 +21,12 @@ import static io.openmessaging.benchmark.worker.WorkerHandler.CREATE_TOPICS;
 import static io.openmessaging.benchmark.worker.WorkerHandler.CUMULATIVE_LATENCIES;
 import static io.openmessaging.benchmark.worker.WorkerHandler.INITIALIZE_DRIVER;
 import static io.openmessaging.benchmark.worker.WorkerHandler.PAUSE_CONSUMERS;
+import static io.openmessaging.benchmark.worker.WorkerHandler.PAUSE_PRODUCERS;
 import static io.openmessaging.benchmark.worker.WorkerHandler.PERIOD_STATS;
 import static io.openmessaging.benchmark.worker.WorkerHandler.PROBE_PRODUCERS;
 import static io.openmessaging.benchmark.worker.WorkerHandler.RESET_STATS;
 import static io.openmessaging.benchmark.worker.WorkerHandler.RESUME_CONSUMERS;
+import static io.openmessaging.benchmark.worker.WorkerHandler.RESUME_PRODUCERS;
 import static io.openmessaging.benchmark.worker.WorkerHandler.START_LOAD;
 import static io.openmessaging.benchmark.worker.WorkerHandler.STOP_ALL;
 import static org.asynchttpclient.Dsl.asyncHttpClient;
@@ -43,6 +45,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.List;
 import org.asynchttpclient.AsyncHttpClient;
 import org.asynchttpclient.Dsl;
@@ -58,7 +61,12 @@ public class HttpWorkerClient implements Worker {
     private final String host;
 
     public HttpWorkerClient(String host) {
-        this(asyncHttpClient(Dsl.config().setReadTimeout(600000).setRequestTimeout(600000)), host);
+        this(
+                asyncHttpClient(
+                        Dsl.config()
+                                .setReadTimeout(Duration.ofMillis(600000))
+                                .setRequestTimeout(Duration.ofMillis(600000))),
+                host);
     }
 
     HttpWorkerClient(AsyncHttpClient httpClient, String host) {
@@ -89,8 +97,8 @@ public class HttpWorkerClient implements Worker {
     }
 
     @Override
-    public void probeProducers() throws IOException {
-        sendPost(PROBE_PRODUCERS);
+    public void probeProducers(byte[] testRecord) throws IOException {
+        sendPost(PROBE_PRODUCERS, writer.writeValueAsBytes(testRecord));
     }
 
     @Override
@@ -114,6 +122,16 @@ public class HttpWorkerClient implements Worker {
     @Override
     public void resumeConsumers() throws IOException {
         sendPost(RESUME_CONSUMERS);
+    }
+
+    @Override
+    public void pauseProducers() throws IOException {
+        sendPost(PAUSE_PRODUCERS);
+    }
+
+    @Override
+    public void resumeProducers() throws IOException {
+        sendPost(RESUME_PRODUCERS);
     }
 
     @Override

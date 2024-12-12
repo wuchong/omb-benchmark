@@ -15,13 +15,24 @@ package io.openmessaging.benchmark.worker.commands;
 
 public class TopicSubscription {
     public String topic;
+    public int subId;
     public String subscription;
+    public int partitionsPerTopic;
+    public int partitionsPerSubscription;
 
     public TopicSubscription() {}
 
-    public TopicSubscription(String topic, String subscription) {
+    public TopicSubscription(
+            String topic,
+            int subId,
+            String subscription,
+            int partitionsPerTopic,
+            int partitionsPerSubscription) {
         this.topic = topic;
+        this.subId = subId;
         this.subscription = subscription;
+        this.partitionsPerTopic = partitionsPerTopic;
+        this.partitionsPerSubscription = partitionsPerSubscription;
     }
 
     @Override
@@ -30,9 +41,16 @@ public class TopicSubscription {
                 + "topic='"
                 + topic
                 + '\''
+                + ", subId="
+                + subId
+                + '\''
                 + ", subscription='"
                 + subscription
                 + '\''
+                + ", partitionsPerTopic="
+                + partitionsPerTopic
+                + ", partitionsPerSubscription="
+                + partitionsPerSubscription
                 + '}';
     }
 }

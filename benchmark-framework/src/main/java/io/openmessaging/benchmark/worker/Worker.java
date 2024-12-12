@@ -34,7 +34,7 @@ public interface Worker extends AutoCloseable {
 
     void createConsumers(ConsumerAssignment consumerAssignment) throws IOException;
 
-    void probeProducers() throws IOException;
+    void probeProducers(byte[] testRecord) throws IOException;
 
     void startLoad(ProducerWorkAssignment producerWorkAssignment) throws IOException;
 
@@ -43,6 +43,10 @@ public interface Worker extends AutoCloseable {
     void pauseConsumers() throws IOException;
 
     void resumeConsumers() throws IOException;
+
+    void pauseProducers() throws IOException;
+
+    void resumeProducers() throws IOException;
 
     CountersStats getCountersStats() throws IOException;
 

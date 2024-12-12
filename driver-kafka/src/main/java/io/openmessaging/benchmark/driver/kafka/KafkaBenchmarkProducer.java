@@ -28,6 +28,8 @@ package io.openmessaging.benchmark.driver.kafka;
 
 
 import io.openmessaging.benchmark.driver.BenchmarkProducer;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.apache.kafka.clients.producer.Producer;
@@ -65,5 +67,36 @@ public class KafkaBenchmarkProducer implements BenchmarkProducer {
     @Override
     public void close() throws Exception {
         producer.close();
+    }
+
+    private static byte[] toBytes(Object[] payload) {
+        int totalSize = 0;
+        for (Object obj : payload) {
+            if (obj instanceof Integer) {
+                totalSize += Integer.BYTES;
+            } else if (obj instanceof String) {
+                totalSize += Integer.BYTES + ((String) obj).getBytes(StandardCharsets.UTF_8).length;
+            } else if (obj instanceof Long) {
+                totalSize += Long.BYTES;
+            } else {
+                throw new IllegalArgumentException("Unsupported type: " + obj.getClass().getName());
+            }
+        }
+
+        ByteBuffer buffer = ByteBuffer.allocate(totalSize);
+
+        for (Object obj : payload) {
+            if (obj instanceof Integer) {
+                buffer.putInt((Integer) obj);
+            } else if (obj instanceof String) {
+                byte[] stringBytes = ((String) obj).getBytes(StandardCharsets.UTF_8);
+                buffer.putInt(stringBytes.length);
+                buffer.put(stringBytes);
+            } else if (obj instanceof Long) {
+                buffer.putLong((Long) obj);
+            }
+        }
+
+        return buffer.array();
     }
 }

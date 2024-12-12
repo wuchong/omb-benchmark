@@ -46,7 +46,7 @@ class KafkaTopicCreatorTest {
     private final String topic = "topic";
     private final int partitions = 1;
     private final short replicationFactor = 1;
-    private final TopicInfo topicInfo = new TopicInfo(topic, partitions);
+    private final TopicInfo topicInfo = new TopicInfo(topic, partitions, new String[] {"int", "int"});
     @Mock private AdminClient admin;
     @Mock private CreateTopicsResult createTopicsResult;
     @Captor private ArgumentCaptor<List<NewTopic>> captor;

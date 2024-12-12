@@ -57,10 +57,9 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
             long pollTimeoutMs) {
         this.consumer = consumer;
         this.executor = Executors.newSingleThreadExecutor();
+        String enableAutoCommitConfig = ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
         this.autoCommit =
-                Boolean.valueOf(
-                        (String)
-                                consumerConfig.getOrDefault(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false"));
+                Boolean.valueOf((String) consumerConfig.getOrDefault(enableAutoCommitConfig, "false"));
         this.consumerTask =
                 this.executor.submit(
                         () -> {

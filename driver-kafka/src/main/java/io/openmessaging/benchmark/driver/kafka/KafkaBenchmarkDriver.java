@@ -101,8 +101,8 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
     }
 
     @Override
-    public CompletableFuture<Void> createTopic(String topic, int partitions) {
-        return createTopics(Collections.singletonList(new TopicInfo(topic, partitions)));
+    public CompletableFuture<Void> createTopic(String topic, int partitions, String[] rowTypeString) {
+        return createTopics(Collections.singletonList(new TopicInfo(topic, partitions, rowTypeString)));
     }
 
     @Override
@@ -132,7 +132,12 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
 
     @Override
     public CompletableFuture<BenchmarkConsumer> createConsumer(
-            String topic, String subscriptionName, ConsumerCallback consumerCallback) {
+            int id,
+            int partitionsPerTopic,
+            int partitionsPerSubscription,
+            String topic,
+            String subscriptionName,
+            ConsumerCallback consumerCallback) {
         Properties properties = new Properties();
         consumerProperties.forEach((key, value) -> properties.put(key, value));
         properties.put(ConsumerConfig.GROUP_ID_CONFIG, subscriptionName);

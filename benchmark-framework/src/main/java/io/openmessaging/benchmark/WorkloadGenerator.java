@@ -15,6 +15,12 @@ package io.openmessaging.benchmark;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
+import com.alibaba.fluss.row.BinaryString;
+import com.alibaba.fluss.row.indexed.IndexedRow;
+import com.alibaba.fluss.row.indexed.IndexedRowWriter;
+import com.alibaba.fluss.types.DataType;
+import com.alibaba.fluss.types.DataTypes;
+import com.alibaba.fluss.types.RowType;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.openmessaging.benchmark.utils.PaddingDecimalFormat;
 import io.openmessaging.benchmark.utils.RandomGenerator;
@@ -38,7 +44,6 @@ import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang.ArrayUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +61,12 @@ public class WorkloadGenerator implements AutoCloseable {
 
     private volatile double targetPublishRate;
 
+    // only for test.
+    private volatile DataType[] filedTypes = null;
+    private int fieldLength = 0;
+    private IndexedRowWriter writer = null;
+    private IndexedRowWriter.FieldWriter[] fieldWriter = null;
+
     public WorkloadGenerator(String driverName, Workload workload, Worker worker) {
         this.driverName = driverName;
         this.workload = workload;
@@ -69,14 +80,24 @@ public class WorkloadGenerator implements AutoCloseable {
 
     public TestResult run() throws Exception {
         Timer timer = new Timer();
+
+        // row type. e.g. int-int-string-string, split by "-"
+        String[] rowTypeStrings = workload.rowTypeString.split("-");
+
         List<String> topics =
-                worker.createTopics(new TopicsInfo(workload.topics, workload.partitionsPerTopic));
+                worker.createTopics(
+                        new TopicsInfo(workload.topics, workload.partitionsPerTopic, rowTypeStrings));
         log.info("Created {} topics in {} ms", topics.size(), timer.elapsedMillis());
+
+        // sleep 15 s to wait for topic to be ready.
+        Thread.sleep(15000);
 
         createConsumers(topics);
         createProducers(topics);
 
-        ensureTopicsAreReady();
+        Random r = new Random();
+        byte[] testRecord = genRecord(rowTypeStrings, r);
+        // ensureTopicsAreReady(testRecord);
 
         if (workload.producerRate > 0) {
             targetPublishRate = workload.producerRate;
@@ -100,63 +121,170 @@ public class WorkloadGenerator implements AutoCloseable {
         ProducerWorkAssignment producerWorkAssignment = new ProducerWorkAssignment();
         producerWorkAssignment.keyDistributorType = workload.keyDistributor;
         producerWorkAssignment.publishRate = targetPublishRate;
+        producerWorkAssignment.messageSize = workload.messageSize;
         producerWorkAssignment.payloadData = new ArrayList<>();
 
         if (workload.useRandomizedPayloads) {
-            // create messages that are part random and part zeros
-            // better for testing effects of compression
-            Random r = new Random();
-            int randomBytes = (int) (workload.messageSize * workload.randomBytesRatio);
-            int zerodBytes = workload.messageSize - randomBytes;
             for (int i = 0; i < workload.randomizedPayloadPoolSize; i++) {
-                byte[] randArray = new byte[randomBytes];
-                r.nextBytes(randArray);
-                byte[] zerodArray = new byte[zerodBytes];
-                byte[] combined = ArrayUtils.addAll(randArray, zerodArray);
-                producerWorkAssignment.payloadData.add(combined);
+                producerWorkAssignment.payloadData.add(genRecord(rowTypeStrings, r));
             }
         } else {
-            producerWorkAssignment.payloadData.add(payloadReader.load(workload.payloadFile));
+            producerWorkAssignment.payloadData.add(genRecord(rowTypeStrings, r));
         }
 
         worker.startLoad(producerWorkAssignment);
 
-        if (workload.warmupDurationMinutes > 0) {
-            log.info("----- Starting warm-up traffic ({}m) ------", workload.warmupDurationMinutes);
-            printAndCollectStats(workload.warmupDurationMinutes, TimeUnit.MINUTES);
+        //        if (workload.consumerBacklogSizeGB > 0) {
+        //            executor.execute(
+        //                    () -> {
+        //                        try {
+        //                            buildAndDrainBacklog(workload.testDurationMinutes,
+        // workload.producerPauseMinutes);
+        //                        } catch (IOException e) {
+        //                            e.printStackTrace();
+        //                        }
+        //                    });
+        //        }
+
+        // build and drain backlog.
+        if (workload.consumerBacklogSizeGB > 0) {
+            buildAndDrainBacklog(workload.testDurationMinutes, workload.producerPauseMinutes);
         }
 
-        if (workload.consumerBacklogSizeGB > 0) {
-            executor.execute(
-                    () -> {
-                        try {
-                            buildAndDrainBacklog(workload.testDurationMinutes);
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    });
+        if (workload.warmupDurationMinutes > 0) {
+            log.info("----- Starting warm-up traffic ({}m) ------", workload.warmupDurationMinutes);
+            printAndCollectStats(workload.warmupDurationMinutes, MINUTES);
         }
 
         worker.resetStats();
         log.info("----- Starting benchmark traffic ({}m)------", workload.testDurationMinutes);
 
-        TestResult result = printAndCollectStats(workload.testDurationMinutes, TimeUnit.MINUTES);
+        TestResult result = printAndCollectStats(workload.testDurationMinutes, MINUTES);
         runCompleted = true;
 
         worker.stopAll();
         return result;
     }
 
-    private void ensureTopicsAreReady() throws IOException {
+    private byte[] genRecord(String[] rowTypeStrings, Random r) {
+        int length = rowTypeStrings.length;
+        Object[] record = new Object[length];
+        int perStringValueByteSize = getStringValueByteSize(rowTypeStrings, workload.messageSize);
+        record[0] = System.currentTimeMillis();
+        for (int i = 1; i < rowTypeStrings.length; i++) {
+            record[i] = genRandomValue(rowTypeStrings[i], perStringValueByteSize, r);
+        }
+        maybeInitializeWriter(record);
+        return toBytes(record);
+    }
+
+    private void maybeInitializeWriter(Object[] payload) {
+        if (filedTypes == null) {
+            synchronized (this) {
+                if (filedTypes == null) {
+                    fieldLength = payload.length;
+                    RowType.Builder builder = RowType.builder();
+                    for (int i = 0; i < fieldLength; i++) {
+                        builder.field("f" + i, genDataType(payload[i]));
+                    }
+                    RowType rowType = builder.build();
+
+                    // initialize writer.
+                    this.writer = new IndexedRowWriter(rowType);
+                    this.fieldWriter = new IndexedRowWriter.FieldWriter[fieldLength];
+                    this.filedTypes = rowType.getChildren().toArray(new DataType[0]);
+                    for (int i = 0; i < fieldLength; i++) {
+                        fieldWriter[i] = IndexedRowWriter.createFieldWriter(filedTypes[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    private DataType genDataType(Object obj) {
+        if (obj instanceof byte[]) {
+            return DataTypes.STRING();
+        } else if (obj instanceof Integer) {
+            return DataTypes.INT();
+        } else if (obj instanceof Long) {
+            return DataTypes.BIGINT();
+        } else {
+            throw new RuntimeException("Unsupported type: " + obj.getClass());
+        }
+    }
+
+    private byte[] toBytes(Object[] payload) {
+        IndexedRow row = toInternalRow(payload);
+        byte[] bytes = new byte[row.getSizeInBytes()];
+        row.copyTo(bytes, 0);
+        return bytes;
+    }
+
+    private IndexedRow toInternalRow(Object[] payload) {
+        writer.reset();
+        for (int i = 0; i < fieldLength; i++) {
+            Object obj = payload[i];
+            if (obj instanceof byte[]) {
+                fieldWriter[i].writeField(writer, i, BinaryString.fromBytes((byte[]) obj));
+            } else {
+                fieldWriter[i].writeField(writer, i, obj);
+            }
+        }
+        IndexedRow indexedRow = new IndexedRow(filedTypes);
+        indexedRow.pointTo(writer.segment(), 0, writer.position());
+        return indexedRow;
+    }
+
+    private int getStringValueByteSize(String[] rowTypeStrings, int messageSize) {
+        int fixedTypeBytesSize = 0;
+        int stringTypeCount = 0;
+        for (String rowTypeString : rowTypeStrings) {
+            switch (rowTypeString) {
+                case "string":
+                    stringTypeCount++;
+                    break;
+                case "int":
+                    fixedTypeBytesSize += 4;
+                    break;
+                case "long":
+                    fixedTypeBytesSize += 8;
+                    break;
+                default:
+                    throw new IllegalArgumentException("Unknown row type: " + rowTypeString);
+            }
+        }
+
+        if (stringTypeCount == 0) {
+            return 0;
+        }
+        return (messageSize - fixedTypeBytesSize) / stringTypeCount;
+    }
+
+    private Object genRandomValue(String rowTypeString, int valueByteSizeForString, Random r) {
+        switch (rowTypeString) {
+            case "string":
+                return RandomGenerator.genRandomBinaryString(valueByteSizeForString);
+            case "int":
+                return r.nextInt();
+            case "long":
+                return r.nextLong();
+            default:
+                throw new IllegalArgumentException("Unknown row type: " + rowTypeString);
+        }
+    }
+
+    private void ensureTopicsAreReady(byte[] testRecord) throws IOException {
         log.info("Waiting for consumers to be ready");
-        // This is work around the fact that there's no way to have a consumer ready in Kafka without
+        // This is work around the fact that there's no way to have a consumer ready in Kafka
+        // without
         // first publishing
-        // some message on the topic, which will then trigger the partitions assignment to the consumers
+        // some message on the topic, which will then trigger the partitions assignment to the
+        // consumers
 
         int expectedMessages = workload.topics * workload.subscriptionsPerTopic;
 
         // In this case we just publish 1 message and then wait for consumers to receive the data
-        worker.probeProducers();
+        worker.probeProducers(testRecord);
 
         long start = System.currentTimeMillis();
         long end = start + 60 * 1000;
@@ -233,10 +361,15 @@ public class WorkloadGenerator implements AutoCloseable {
         for (String topic : topics) {
             for (int i = 0; i < workload.subscriptionsPerTopic; i++) {
                 String subscriptionName =
-                        String.format("sub-%03d-%s", i, RandomGenerator.getRandomString());
+                        String.format("sub-%03d-%s", i, RandomGenerator.genRandomBinaryString());
                 for (int j = 0; j < workload.consumerPerSubscription; j++) {
                     consumerAssignment.topicsSubscriptions.add(
-                            new TopicSubscription(topic, subscriptionName));
+                            new TopicSubscription(
+                                    topic,
+                                    j,
+                                    subscriptionName,
+                                    workload.partitionsPerTopic,
+                                    workload.consumerPerSubscription));
                 }
             }
         }
@@ -268,15 +401,15 @@ public class WorkloadGenerator implements AutoCloseable {
         log.info("Created {} producers in {} ms", fullListOfTopics.size(), timer.elapsedMillis());
     }
 
-    private void buildAndDrainBacklog(int testDurationMinutes) throws IOException {
+    private void buildAndDrainBacklog(int testDurationMinutes, int producerPauseMinutes)
+            throws IOException {
         Timer timer = new Timer();
         log.info("Stopping all consumers to build backlog");
-        worker.pauseConsumers();
 
+        worker.pauseConsumers();
         this.needToWaitForBacklogDraining = true;
 
         long requestedBacklogSize = workload.consumerBacklogSizeGB * 1024 * 1024 * 1024;
-
         while (true) {
             CountersStats stats = worker.getCountersStats();
             long currentBacklogSize =
@@ -295,38 +428,54 @@ public class WorkloadGenerator implements AutoCloseable {
         }
 
         log.info("--- Completed backlog build in {} s ---", timer.elapsedSeconds());
-        timer = new Timer();
-        log.info("--- Start draining backlog ---");
 
-        worker.resumeConsumers();
-
-        long backlogMessageCapacity = requestedBacklogSize / workload.messageSize;
-        long backlogEmptyLevel = (long) ((1.0 - workload.backlogDrainRatio) * backlogMessageCapacity);
-        final long minBacklog = Math.max(1000L, backlogEmptyLevel);
-
-        while (true) {
-            CountersStats stats = worker.getCountersStats();
-            long currentBacklog =
-                    workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived;
-            if (currentBacklog <= minBacklog) {
-                log.info("--- Completed backlog draining in {} s ---", timer.elapsedSeconds());
-
-                try {
-                    Thread.sleep(MINUTES.toMillis(testDurationMinutes));
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-
-                needToWaitForBacklogDraining = false;
-                return;
-            }
-
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+        // stop producer for some time, and recover producer and consumer.
+        worker.pauseProducers();
+        try {
+            log.info("--- Pausing producer for {} minutes ---", producerPauseMinutes);
+            Thread.sleep(MINUTES.toMillis(producerPauseMinutes));
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
+
+        log.info("resume producer and consumer");
+        // producer don't resume.
+        if (workload.resumeProducers) {
+            worker.resumeProducers();
+        }
+        worker.resumeConsumers();
+        needToWaitForBacklogDraining = false;
+
+        //        long backlogMessageCapacity = requestedBacklogSize / workload.messageSize;
+        //        long backlogEmptyLevel =
+        //                (long) ((1.0 - workload.backlogDrainRatio) * backlogMessageCapacity);
+        //        final long minBacklog = Math.max(1000L, backlogEmptyLevel);
+
+        //        while (true) {
+        //            CountersStats stats = worker.getCountersStats();
+        //            long currentBacklog =
+        //                    workload.subscriptionsPerTopic * stats.messagesSent -
+        // stats.messagesReceived;
+        //            if (currentBacklog <= minBacklog) {
+        //                log.info("--- Completed backlog draining in {} s ---",
+        // timer.elapsedSeconds());
+        //
+        //                try {
+        //                    Thread.sleep(MINUTES.toMillis(testDurationMinutes));
+        //                } catch (InterruptedException e) {
+        //                    throw new RuntimeException(e);
+        //                }
+        //
+        //                needToWaitForBacklogDraining = false;
+        //                return;
+        //            }
+        //
+        //            try {
+        //                Thread.sleep(100);
+        //            } catch (InterruptedException e) {
+        //                throw new RuntimeException(e);
+        //            }
+        //        }
     }
 
     @SuppressWarnings({"checkstyle:LineLength", "checkstyle:MethodLength"})

@@ -136,12 +136,12 @@ public class DistributedWorkersEnsemble implements Worker {
     }
 
     @Override
-    public void probeProducers() throws IOException {
+    public void probeProducers(byte[] testRecord) throws IOException {
         producerWorkers.parallelStream()
                 .forEach(
                         w -> {
                             try {
-                                w.probeProducers();
+                                w.probeProducers(testRecord);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -193,6 +193,32 @@ public class DistributedWorkersEnsemble implements Worker {
                         w -> {
                             try {
                                 w.resumeConsumers();
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+    }
+
+    @Override
+    public void pauseProducers() throws IOException {
+        producerWorkers.parallelStream()
+                .forEach(
+                        w -> {
+                            try {
+                                w.pauseProducers();
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+    }
+
+    @Override
+    public void resumeProducers() throws IOException {
+        producerWorkers.parallelStream()
+                .forEach(
+                        w -> {
+                            try {
+                                w.resumeProducers();
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }

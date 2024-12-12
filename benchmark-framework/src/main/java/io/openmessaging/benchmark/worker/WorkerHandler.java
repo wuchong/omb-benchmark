@@ -39,6 +39,8 @@ public class WorkerHandler {
     public static final String CREATE_CONSUMERS = "/create-consumers";
     public static final String PAUSE_CONSUMERS = "/pause-consumers";
     public static final String RESUME_CONSUMERS = "/resume-consumers";
+    public static final String PAUSE_PRODUCERS = "/pause-producers";
+    public static final String RESUME_PRODUCERS = "/resume-producers";
     public static final String START_LOAD = "/start-load";
     public static final String ADJUST_PUBLISH_RATE = "/adjust-publish-rate";
     public static final String STOP_ALL = "/stop-all";
@@ -58,6 +60,8 @@ public class WorkerHandler {
         app.post(CREATE_CONSUMERS, this::handleCreateConsumers);
         app.post(PAUSE_CONSUMERS, this::handlePauseConsumers);
         app.post(RESUME_CONSUMERS, this::handleResumeConsumers);
+        app.post(PAUSE_PRODUCERS, this::handlePauseProducers);
+        app.post(RESUME_PRODUCERS, this::handleResumeProducers);
         app.post(START_LOAD, this::handleStartLoad);
         app.post(ADJUST_PUBLISH_RATE, this::handleAdjustPublishRate);
         app.post(STOP_ALL, this::handleStopAll);
@@ -90,7 +94,8 @@ public class WorkerHandler {
     }
 
     private void handleProbeProducers(Context ctx) throws Exception {
-        localWorker.probeProducers();
+        byte[] record = (byte[]) mapper.readValue(ctx.body(), byte[].class);
+        localWorker.probeProducers(record);
     }
 
     private void handleCreateConsumers(Context ctx) throws Exception {
@@ -107,6 +112,14 @@ public class WorkerHandler {
 
     private void handleResumeConsumers(Context ctx) throws Exception {
         localWorker.resumeConsumers();
+    }
+
+    private void handlePauseProducers(Context ctx) throws Exception {
+        localWorker.pauseProducers();
+    }
+
+    private void handleResumeProducers(Context ctx) throws Exception {
+        localWorker.resumeProducers();
     }
 
     private void handleStartLoad(Context ctx) throws Exception {

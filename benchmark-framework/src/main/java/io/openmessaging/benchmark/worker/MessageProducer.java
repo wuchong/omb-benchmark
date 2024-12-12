@@ -38,13 +38,14 @@ public class MessageProducer {
         this.stats = stats;
     }
 
-    public void sendMessage(BenchmarkProducer producer, Optional<String> key, byte[] payload) {
+    public void sendMessage(
+            BenchmarkProducer producer, Optional<String> key, byte[] payload, int messageSize) {
         final long intendedSendTime = rateLimiter.acquire();
         uninterruptibleSleepNs(intendedSendTime);
         final long sendTime = nanoClock.get();
         producer
                 .sendAsync(key, payload)
-                .thenRun(() -> success(payload.length, intendedSendTime, sendTime))
+                .thenRun(() -> success(messageSize, intendedSendTime, sendTime))
                 .exceptionally(this::failure);
     }
 

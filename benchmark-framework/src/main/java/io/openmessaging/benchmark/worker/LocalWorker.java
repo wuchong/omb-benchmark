@@ -69,6 +69,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
     private final WorkerStats stats;
     private boolean testCompleted = false;
     private boolean consumersArePaused = false;
+    private boolean producersArePaused = false;
 
     public LocalWorker() {
         this(NullStatsLogger.INSTANCE);
@@ -108,7 +109,11 @@ public class LocalWorker implements Worker, ConsumerCallback {
         List<TopicInfo> topicInfos =
                 IntStream.range(0, topicsInfo.numberOfTopics)
                         .mapToObj(
-                                i -> new TopicInfo(generateTopicName(i), topicsInfo.numberOfPartitionsPerTopic))
+                                i ->
+                                        new TopicInfo(
+                                                generateTopicName(i),
+                                                topicsInfo.numberOfPartitionsPerTopic,
+                                                topicsInfo.rowTypeString))
                         .collect(toList());
 
         benchmarkDriver.createTopics(topicInfos).join();
@@ -121,7 +126,10 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
     private String generateTopicName(int i) {
         return String.format(
-                "%s-%07d-%s", benchmarkDriver.getTopicNamePrefix(), i, RandomGenerator.getRandomString());
+                "%s_%07d_%s",
+                benchmarkDriver.getTopicNamePrefix(),
+                i,
+                RandomGenerator.genRandomBinaryString().replace("-", ""));
     }
 
     @Override
@@ -152,7 +160,12 @@ public class LocalWorker implements Worker, ConsumerCallback {
                                         .map(
                                                 c ->
                                                         new ConsumerInfo(
-                                                                index.getAndIncrement(), c.topic, c.subscription, this))
+                                                                c.subId,
+                                                                c.partitionsPerTopic,
+                                                                c.partitionsPerSubscription,
+                                                                c.topic,
+                                                                c.subscription,
+                                                                this))
                                         .collect(toList()))
                         .join());
 
@@ -183,30 +196,43 @@ public class LocalWorker implements Worker, ConsumerCallback {
                                 submitProducersToExecutor(
                                         producers,
                                         KeyDistributor.build(producerWorkAssignment.keyDistributorType),
-                                        producerWorkAssignment.payloadData));
+                                        producerWorkAssignment.payloadData,
+                                        producerWorkAssignment.messageSize));
     }
 
     @Override
-    public void probeProducers() throws IOException {
+    public void probeProducers(byte[] testRecord) throws IOException {
         producers.forEach(
                 producer ->
-                        producer.sendAsync(Optional.of("key"), new byte[10]).thenRun(stats::recordMessageSent));
+                        producer.sendAsync(Optional.of("key"), testRecord).thenRun(stats::recordMessageSent));
     }
 
     private void submitProducersToExecutor(
-            List<BenchmarkProducer> producers, KeyDistributor keyDistributor, List<byte[]> payloads) {
+            List<BenchmarkProducer> producers,
+            KeyDistributor keyDistributor,
+            List<byte[]> payloads,
+            int messageSize) {
         ThreadLocalRandom r = ThreadLocalRandom.current();
         int payloadCount = payloads.size();
         executor.submit(
                 () -> {
                     try {
                         while (!testCompleted) {
+                            while (producersArePaused) {
+                                try {
+                                    Thread.sleep(1000);
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+
                             producers.forEach(
                                     p ->
                                             messageProducer.sendMessage(
                                                     p,
                                                     Optional.ofNullable(keyDistributor.next()),
-                                                    payloads.get(r.nextInt(payloadCount))));
+                                                    payloads.get(r.nextInt(payloadCount)),
+                                                    messageSize));
                         }
                     } catch (Throwable t) {
                         log.error("Got error", t);
@@ -276,6 +302,18 @@ public class LocalWorker implements Worker, ConsumerCallback {
     public void resumeConsumers() throws IOException {
         consumersArePaused = false;
         log.info("Resuming consumers");
+    }
+
+    @Override
+    public void pauseProducers() throws IOException {
+        producersArePaused = true;
+        log.info("Pausing producers");
+    }
+
+    @Override
+    public void resumeProducers() throws IOException {
+        producersArePaused = false;
+        log.info("Resuming producers");
     }
 
     @Override

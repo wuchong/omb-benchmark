@@ -11,18 +11,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.openmessaging.benchmark.worker.commands;
+package io.openmessaging.benchmark.driver.fluss;
 
-public class TopicsInfo {
-    public int numberOfTopics;
-    public int numberOfPartitionsPerTopic;
-    public String[] rowTypeString;
+/** Fluss client config. */
+public class FlussClientConfig {
+    public String bootstrapServers;
 
-    public TopicsInfo() {}
+    public String writerAcks;
 
-    public TopicsInfo(int numberOfTopics, int numberOfPartitionsPerTopic, String[] rowTypeString) {
-        this.numberOfTopics = numberOfTopics;
-        this.numberOfPartitionsPerTopic = numberOfPartitionsPerTopic;
-        this.rowTypeString = rowTypeString;
-    }
+    public String writerBatchSize;
+
+    public String writerBufferMemory;
+
+    public int writerBatchTimeoutMs;
+
+    public int clientNettyThreads;
+
+    public String fetchMaxBytes;
+
+    public String logFormat;
+
+    public int prefetchNum;
+
+    public String projectFields;
+
+    public boolean isCheckCrc;
+
+    public String pageSize;
+
+    public int arrowRecordNum;
 }

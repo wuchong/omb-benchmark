@@ -70,7 +70,7 @@ public class NatsStreamingBenchmarkDriver implements BenchmarkDriver {
     }
 
     @Override
-    public CompletableFuture<Void> createTopic(String topic, int partitions) {
+    public CompletableFuture<Void> createTopic(String topic, int partitions,  String[] rowTypeString) {
         log.info("nats streaming create a topic" + topic);
         log.info("ignore partitions");
         CompletableFuture<Void> future = new CompletableFuture<>();
@@ -95,8 +95,12 @@ public class NatsStreamingBenchmarkDriver implements BenchmarkDriver {
     }
 
     @Override
-    public CompletableFuture<BenchmarkConsumer> createConsumer(
-            String topic, String subscriptionName, ConsumerCallback consumerCallback) {
+    public CompletableFuture<BenchmarkConsumer> createConsumer(int id,
+            int partitionsPerTopic,
+            int partitionsPerSubscription,
+            String topic,
+            String subscriptionName,
+            ConsumerCallback consumerCallback) {
         Subscription sub;
         StreamingConnection streamingConnection;
         String clientId = "ConsumerInstance" + getRandomString();

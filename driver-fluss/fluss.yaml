@@ -12,16 +12,19 @@
 # limitations under the License.
 #
 
-name: 1 topic / 1 partition / 100b
 
-topics: 1
-partitionsPerTopic: 1
-messageSize: 100
-payloadFile: "payload/payload-100b.data"
-subscriptionsPerTopic: 1
-consumerPerSubscription: 1
-producersPerTopic: 1
-producerRate: 50000
-consumerBacklogSizeGB: 0
-testDurationMinutes: 15
-rowTypeString: "int-int-string-string"
+name: Fluss
+driverClass: io.openmessaging.benchmark.driver.fluss.FlussBenchmarkDriver
+
+# Fluss client configuration
+client:
+  bootstrapServers: localhost:9123
+  writerAcks: all
+  writerBatchSize: 1mb
+  writerBufferMemory: 32mb
+  writerBatchTimeoutMs: 100
+  clientNettyThreads: 1
+  fetchMaxBytes: 16mb
+  logFormat: ARROW  # ARROW or INDEXED
+  projectFields: all # all or 0/2/4
+  prefetchNum: 4

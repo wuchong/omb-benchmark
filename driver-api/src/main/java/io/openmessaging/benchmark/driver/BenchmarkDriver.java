@@ -49,9 +49,10 @@ public interface BenchmarkDriver extends AutoCloseable {
      *
      * @param topic
      * @param partitions
+     * @param rowTypeString
      * @return a future the completes when the topic is created
      */
-    CompletableFuture<Void> createTopic(String topic, int partitions);
+    CompletableFuture<Void> createTopic(String topic, int partitions, String[] rowTypeString);
 
     /**
      * Create a list of new topics with the given number of partitions.
@@ -63,7 +64,12 @@ public interface BenchmarkDriver extends AutoCloseable {
         @SuppressWarnings("unchecked")
         CompletableFuture<Void>[] futures =
                 topicInfos.stream()
-                        .map(topicInfo -> createTopic(topicInfo.getTopic(), topicInfo.getPartitions()))
+                        .map(
+                                topicInfo ->
+                                        createTopic(
+                                                topicInfo.getTopic(),
+                                                topicInfo.getPartitions(),
+                                                topicInfo.getRowTypeString()))
                         .toArray(CompletableFuture[]::new);
         return CompletableFuture.allOf(futures);
     }
@@ -95,13 +101,21 @@ public interface BenchmarkDriver extends AutoCloseable {
      * <p>It is responsibility of the driver implementation to invoke the <code>consumerCallback
      * </code> each time a message is received.
      *
+     * @param id
+     * @param partitionsPerTopic
+     * @param partitionsPerSubscription
      * @param topic
      * @param subscriptionName
      * @param consumerCallback
      * @return a consumer future
      */
     CompletableFuture<BenchmarkConsumer> createConsumer(
-            String topic, String subscriptionName, ConsumerCallback consumerCallback);
+            int id,
+            int partitionsPerTopic,
+            int partitionsPerSubscription,
+            String topic,
+            String subscriptionName,
+            ConsumerCallback consumerCallback);
 
     /**
      * Create a consumers for a given topic.
@@ -115,7 +129,12 @@ public interface BenchmarkDriver extends AutoCloseable {
                         .map(
                                 ci ->
                                         createConsumer(
-                                                ci.getTopic(), ci.getSubscriptionName(), ci.getConsumerCallback()))
+                                                ci.getId(),
+                                                ci.getPartitionsPerTopic(),
+                                                ci.getPartitionsPerSubscription(),
+                                                ci.getTopic(),
+                                                ci.getSubscriptionName(),
+                                                ci.getConsumerCallback()))
                         .collect(toList());
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
                 .thenApply(v -> futures.stream().map(CompletableFuture::join).collect(toList()));
@@ -125,6 +144,7 @@ public interface BenchmarkDriver extends AutoCloseable {
     class TopicInfo {
         String topic;
         int partitions;
+        String[] rowTypeString;
     }
 
     @Value
@@ -136,6 +156,8 @@ public interface BenchmarkDriver extends AutoCloseable {
     @Value
     class ConsumerInfo {
         int id;
+        int partitionsPerTopic;
+        int partitionsPerSubscription;
         String topic;
         String subscriptionName;
         ConsumerCallback consumerCallback;

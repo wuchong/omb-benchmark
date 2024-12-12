@@ -12,16 +12,27 @@
 # limitations under the License.
 #
 
-name: 1 topic / 1 partition / 100b
 
-topics: 1
-partitionsPerTopic: 1
-messageSize: 100
-payloadFile: "payload/payload-100b.data"
-subscriptionsPerTopic: 1
-consumerPerSubscription: 1
-producersPerTopic: 1
-producerRate: 50000
-consumerBacklogSizeGB: 0
-testDurationMinutes: 15
-rowTypeString: "int-int-string-string"
+name: Kafka
+driverClass: io.openmessaging.benchmark.driver.kafka.KafkaBenchmarkDriver
+
+# Kafka client-specific configuration
+replicationFactor: 3
+
+topicConfig: |
+  min.insync.replicas=2
+
+commonConfig: |
+  bootstrap.servers=xxx:9092
+  default.api.timeout.ms=1200000
+  request.timeout.ms=1200000
+
+producerConfig: |
+  acks=all
+  linger.ms=1
+  batch.size=1048576
+
+consumerConfig: |
+  auto.offset.reset=earliest
+  enable.auto.commit=false
+  max.partition.fetch.bytes=10485760

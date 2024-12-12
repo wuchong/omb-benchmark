@@ -21,6 +21,8 @@ public class ProducerWorkAssignment {
 
     public List<byte[]> payloadData;
 
+    public int messageSize;
+
     public double publishRate;
 
     public KeyDistributorType keyDistributorType;
@@ -29,6 +31,7 @@ public class ProducerWorkAssignment {
         ProducerWorkAssignment copy = new ProducerWorkAssignment();
         copy.keyDistributorType = this.keyDistributorType;
         copy.payloadData = this.payloadData;
+        copy.messageSize = this.messageSize;
         copy.publishRate = publishRate;
         return copy;
     }

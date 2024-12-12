@@ -21,9 +21,15 @@ public class RandomGenerator {
 
     private static final Random random = new Random();
 
-    public static final String getRandomString() {
+    public static final String genRandomBinaryString() {
         byte[] buffer = new byte[5];
         random.nextBytes(buffer);
         return BaseEncoding.base64Url().omitPadding().encode(buffer);
+    }
+
+    public static byte[] genRandomBinaryString(int bytesSize) {
+        byte[] buffer = new byte[bytesSize];
+        random.nextBytes(buffer);
+        return buffer;
     }
 }

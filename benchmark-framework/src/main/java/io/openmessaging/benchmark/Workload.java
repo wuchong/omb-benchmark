@@ -64,5 +64,16 @@ public class Workload {
 
     public int testDurationMinutes;
 
+    public int producerPauseMinutes = 1;
+
     public int warmupDurationMinutes = 1;
+
+    /**
+     * row type string split by "-".
+     *
+     * <p>support int/long/string
+     */
+    public String rowTypeString = "int-int-string-sting";
+
+    public boolean resumeProducers = true;
 }

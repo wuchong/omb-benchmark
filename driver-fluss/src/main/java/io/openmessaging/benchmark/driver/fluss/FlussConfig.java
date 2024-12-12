@@ -11,18 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.openmessaging.benchmark.worker.commands;
+package io.openmessaging.benchmark.driver.fluss;
 
-public class TopicsInfo {
-    public int numberOfTopics;
-    public int numberOfPartitionsPerTopic;
-    public String[] rowTypeString;
-
-    public TopicsInfo() {}
-
-    public TopicsInfo(int numberOfTopics, int numberOfPartitionsPerTopic, String[] rowTypeString) {
-        this.numberOfTopics = numberOfTopics;
-        this.numberOfPartitionsPerTopic = numberOfPartitionsPerTopic;
-        this.rowTypeString = rowTypeString;
-    }
+/** Fluss benchmark config. */
+public class FlussConfig {
+    public FlussClientConfig client = new FlussClientConfig();
 }
